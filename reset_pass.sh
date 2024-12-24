@@ -1,0 +1,1 @@
+sudo cat /sys/kernel/debug/my_debugfs_dir/mdp_input

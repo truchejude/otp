@@ -1,2 +1,10 @@
 testperso/
 .vscode
+*.cmd
+*.ko
+*.mod
+*.symvers
+*.order
+*.o
+*.mod.c
+*.moi.txt
