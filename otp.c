@@ -22,7 +22,10 @@ int update_information(const int free);
 static char pass_world_input[100] = "";
 #define NBR_OF_DEBUG 3
 static const char *debug_file_name[NBR_OF_DEBUG] = {
-    "mdp_input", "nbr_pass", "time"};
+    "mdp_input", // donne le mdp et restart le mdp
+    "nbr_pass", // le nombre de mdp Pour pouvoir le changer #PAS FAIT
+    "time" // le temps pour pouvoir le changer #PAS FAIT
+    };
 static struct dentry *debug_dir, *debug_file[NBR_OF_DEBUG];
 
 // Définir les opérations de fichier pour pass_world_input
@@ -195,8 +198,6 @@ static ssize_t is_pass_write(struct file *file, const char __user *user_buf, siz
     // Copie des données depuis l'espace utilisateur vers l'espace noyau
     if (copy_from_user(pass_world_input, user_buf, count))
         return -EFAULT;
-
-    // Ajout du caractère null pour terminer la chaîne
     pass_world_input[count - 1] = '\0';
 
     // Parcours de la liste des mots de passe
@@ -508,7 +509,6 @@ static enum hrtimer_restart test_hrtimer_handler(struct hrtimer *timer)
 {
     if (time > 0)
     {
-        pr_info("PROCK\n");
         if (update_information(1) == -ENOMEM)
         {
             pr_err("Failed to update information(\n");
