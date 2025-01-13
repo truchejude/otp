@@ -6,8 +6,6 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-# Affecte l'argument à une variable
 NEW_VALUE="$1"
-
-# Écrit la valeur dans le fichier debugfs avec les privilèges nécessaires
 echo "$NEW_VALUE" | sudo tee /sys/kernel/debug/my_debugfs_dir/mdp_input
+# ./pass.sh {MDP}

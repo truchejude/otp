@@ -13,11 +13,10 @@
 #include <linux/ktime.h>
 #include <linux/time64.h>
 #include <linux/timekeeping.h>
-// Fonction pour afficher et verrouiller les mots de passe non utilisés
 
 // GLOBAL VARIABLE START:
 
-void update_information(const int free);
+int update_information(const int free);
 
 // ------------------------------------------------------------------------ DEBUG DIR
 static char pass_world_input[100] = "";
@@ -27,18 +26,23 @@ static const char *debug_file_name[NBR_OF_DEBUG] = {
 static struct dentry *debug_dir, *debug_file[NBR_OF_DEBUG];
 
 // Définir les opérations de fichier pour pass_world_input
+
+// si il est écrit ça vas proposer un mdp a la liste
 static ssize_t is_pass_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos);
+// si il est lu ça vas restart les mdp
 static ssize_t is_pass_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos);
 
+// just pour tester
 static ssize_t plopW(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
     pr_err("PLOP: W");
     return 0;
 }
 
+// just pour tester
 static ssize_t plopR(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {
-    pr_err("PLOP: W");
+    pr_err("PLOP: R");
     return 0;
 }
 
@@ -77,11 +81,12 @@ static const char *file_path_predef[NBR_OF_FILE] = {
 static struct file_info file_info_tab[NBR_OF_FILE];
 
 // ------------------------------------------------------------------------ GÉNERATEUR DE MDP
+
 // déclaration des function
-void add_password_to_list(const char *password);
-void generate_passwords(int number);
+int add_password_to_list(const char *password);
+int generate_passwords(int number);
 void print_passwords(void);
-void save_and_lock_passwords(void);
+int save_and_lock_passwords(void);
 
 // Structure pour chaque mot de passe
 struct password_item
@@ -100,7 +105,7 @@ static const char *base_words[] = {
 static const size_t base_words_count = sizeof(base_words) / sizeof(base_words[0]);
 
 // Paramètre de module pour spécifier le nombre de mots de passe à générer
-static int num_passwords = 5; // Valeur par défaut : 5 mots de passe
+static int num_passwords = 5;
 module_param(num_passwords, int, 0444);
 MODULE_PARM_DESC(num_passwords, "Nombre de mots de passe à générer");
 
@@ -170,7 +175,11 @@ static int write_to_file(const char *data, int nbrf)
 // Fonction pour lire pass_world_input depuis debugfs
 static ssize_t is_pass_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
 {
-    update_information(1);
+    if (update_information(1) == -ENOMEM)
+    {
+        pr_err("Failed to update information(\n");
+        return -ENOMEM;
+    }
     return simple_read_from_buffer(user_buf, count, ppos, pass_world_input, strlen(pass_world_input));
 }
 
@@ -254,7 +263,7 @@ static void clean_debug(void)
 // ------------------------- GÉNERATEUR DE MDP -------------- START
 
 // Fonction pour ajouter un mot de passe à la liste
-void add_password_to_list(const char *password)
+int add_password_to_list(const char *password)
 {
     struct password_item *new_item;
 
@@ -263,22 +272,29 @@ void add_password_to_list(const char *password)
     if (!new_item)
     {
         pr_err("echec de l'allocation de memoire pour un nouvel element\n");
-        return;
+        return -ENOMEM;
     }
 
     // on met le mdp dans la liste
     new_item->password = my_strcpy_kernel(password);
     new_item->use = false;
 
+    if (NULL == new_item->password)
+    {
+        pr_err("echec de l'allocation de memoire pour un MDP dans un element\n");
+        return -ENOMEM;
+    }
+
     // Initialiser et ajouter l'élément à la liste chaînée
     INIT_LIST_HEAD(&new_item->list);
     list_add(&new_item->list, &password_list);
 
     pr_info("Ajout du mot de passe: %s\n", new_item->password);
+    return 0;
 }
 
 // Fonction pour générer des mots de passe aléatoires
-void generate_passwords(int number)
+int generate_passwords(int number)
 {
     int j;
     char password[64];
@@ -294,8 +310,12 @@ void generate_passwords(int number)
 
         // Générer un mot de passe avec un mot de base et un chiffre
         snprintf(password, sizeof(password), "%s%s%s%d", base_words[random_nbr % (base_words_count - 1)], base_words[(random_nbr / 2) % (base_words_count - 1)], base_words[(random_nbr / 3) % (base_words_count - 1)], random_nbr);
-        add_password_to_list(password);
+        if (-ENOMEM == add_password_to_list(password))
+        {
+            return -ENOMEM;
+        }
     }
+    return 0;
 }
 
 // Fonction pour afficher les mots de passe de la liste
@@ -393,7 +413,7 @@ static void print_time_with_offset(int offset)
     }
 }
 
-void save_and_lock_passwords(void)
+int save_and_lock_passwords(void)
 {
     struct password_item *item;
     char *all_passwords;
@@ -403,7 +423,8 @@ void save_and_lock_passwords(void)
 
     if (NULL == time_mdp_expired)
     {
-        return;
+        // revoir
+        return -ENOMEM;
     }
     total_length += strlen(time_mdp_expired) + 1 + strlen(expritation_sentence); // + 1 pour le \n
     pr_info("Liste des mots de passe non utilisés :\n");
@@ -422,7 +443,7 @@ void save_and_lock_passwords(void)
     if (!all_passwords)
     {
         pr_err("Erreur d'allocation mémoire pour: all_passwords\n");
-        return;
+        return -ENOMEM;
     }
 
     all_passwords[0] = '\0'; // Initialiser la chaîne à vide
@@ -448,10 +469,11 @@ void save_and_lock_passwords(void)
     kfree(all_passwords);
     kfree(time_mdp_expired);
     print_time_with_offset(time);
+    return 0;
 }
 
 // si free est = 1 ça vas free la liste de mdp precedante
-void update_information(const int free)
+int update_information(const int free)
 {
     if (free == 1)
     {
@@ -465,12 +487,21 @@ void update_information(const int free)
         }
     }
     // Générer les mots de passe avec le nombre spécifié
-    generate_passwords(num_passwords);
+    if (generate_passwords(num_passwords))
+    {
+        pr_err("Failed to generate passwords\n");
+        return -ENOMEM;
+    }
 
     // Afficher les mots de passe générés
     print_passwords();
-    save_and_lock_passwords();
+    if (save_and_lock_passwords())
+    {
+        pr_err("Failed to save passwords\n");
+        return -ENOMEM;
+    }
     // FREE LES MDP
+    return 0;
 }
 
 static enum hrtimer_restart test_hrtimer_handler(struct hrtimer *timer)
@@ -478,7 +509,11 @@ static enum hrtimer_restart test_hrtimer_handler(struct hrtimer *timer)
     if (time > 0)
     {
         pr_info("PROCK\n");
-        update_information(1);
+        if (update_information(1) == -ENOMEM)
+        {
+            pr_err("Failed to update information(\n");
+            return -ENOMEM;
+        }
         hrtimer_forward_now(&test_hrtimer, ms_to_ktime(time * HZ));
         return HRTIMER_RESTART;
     }
@@ -523,7 +558,11 @@ static int __init password_generator_init(void)
     test_hrtimer_init();
 
     // les truc plus classique
-    update_information(0);
+    if (update_information(0) == -ENOMEM)
+    {
+        pr_err("Failed to update information(\n");
+        return -ENOMEM;
+    }
     pr_info("Module decharge \n");
     return 0;
 }
