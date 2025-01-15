@@ -36,6 +36,8 @@ static ssize_t is_pass_write(struct file *file, const char __user *user_buf, siz
 static ssize_t is_pass_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos);
 // si le man écrit dans le fichier nbr_pass (changer de nombre de mdp)
 static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos);
+// si le man écrit dans le fichier time ça change le nombre de mdp
+static ssize_t changeProckTime(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos);
 
 // just pour tester
 static ssize_t plopW(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
@@ -64,7 +66,7 @@ static const struct file_operations fops_str[NBR_OF_DEBUG] = {{
                                                               {
                                                                   .owner = THIS_MODULE,
                                                                   .read = plopR,
-                                                                  .write = plopW,
+                                                                  .write = changeProckTime,
                                                               }};
 
 // ------------------------------------------------------------------------ My_LIB
@@ -180,7 +182,7 @@ static int write_to_file(const char *data, int nbrf)
 // pour changer le nombre de mdp
 static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
-    char kbuf[16]; // Buffer pour contenir l'entrée utilisateur
+    char kbuf[16];
     int new_value;
 
     if (count >= sizeof(kbuf))
@@ -190,7 +192,7 @@ static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size
     if (copy_from_user(kbuf, user_buf, count))
         return -EFAULT;
 
-    kbuf[count] = '\0'; // Terminaison de la chaîne
+    kbuf[count] = '\0';
 
     // Conversion en entier
     if (kstrtoint(kbuf, 10, &new_value) < 0) {
@@ -212,6 +214,39 @@ static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size
         return -ENOMEM;
     }
     pr_info("num_passwords mis à jour à : %d\n", num_passwords);
+
+    return count; // Retourne le nombre d'octets traités
+}
+
+// pour changer le temps de changement des clé
+static ssize_t changeProckTime(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
+{
+    char kbuf[16];
+    int new_value;
+
+    if (count >= sizeof(kbuf))
+        return -EINVAL; // Retourne une erreur si l'entrée est trop grande
+
+    // Copie depuis l'espace utilisateur
+    if (copy_from_user(kbuf, user_buf, count))
+        return -EFAULT;
+
+    kbuf[count] = '\0';
+
+    // Conversion en entier
+    if (kstrtoint(kbuf, 10, &new_value) < 0) {
+        pr_err("Erreur : entrée non valide\n");
+        return -EINVAL;
+    }
+
+    // Mise à jour de num_passwords
+    time = new_value;
+    if (update_information(1) == -ENOMEM)
+    {
+        pr_err("Failed to update information(\n");
+        return -ENOMEM;
+    }
+    pr_info("time mis à jour à : %d\n", time);
 
     return count; // Retourne le nombre d'octets traités
 }
