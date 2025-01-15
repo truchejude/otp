@@ -23,9 +23,9 @@ static char pass_world_input[100] = "";
 #define NBR_OF_DEBUG 3
 static const char *debug_file_name[NBR_OF_DEBUG] = {
     "mdp_input", // donne le mdp et restart le mdp
-    "nbr_pass", // le nombre de mdp Pour pouvoir le changer #PAS FAIT
-    "time" // le temps pour pouvoir le changer #PAS FAIT
-    };
+    "nbr_pass",  // c'est bon on peux changer le nombre de mdp en tre 1 et 20
+    "time"       // le temps pour pouvoir le changer #PAS FAIT
+};
 static struct dentry *debug_dir, *debug_file[NBR_OF_DEBUG];
 
 // Définir les opérations de fichier pour pass_world_input
@@ -34,6 +34,8 @@ static struct dentry *debug_dir, *debug_file[NBR_OF_DEBUG];
 static ssize_t is_pass_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos);
 // si il est lu ça vas restart les mdp
 static ssize_t is_pass_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos);
+// si le man écrit dans le fichier nbr_pass (changer de nombre de mdp)
+static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos);
 
 // just pour tester
 static ssize_t plopW(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
@@ -57,7 +59,7 @@ static const struct file_operations fops_str[NBR_OF_DEBUG] = {{
                                                               {
                                                                   .owner = THIS_MODULE,
                                                                   .read = plopR,
-                                                                  .write = plopW,
+                                                                  .write = changeMdpNpr,
                                                               },
                                                               {
                                                                   .owner = THIS_MODULE,
@@ -174,6 +176,45 @@ static int write_to_file(const char *data, int nbrf)
 // ------------------------- My_LIB ------------------------- END
 
 // ------------------------- DEBUG DIR ---------------------- START
+
+// pour changer le nombre de mdp
+static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
+{
+    char kbuf[16]; // Buffer pour contenir l'entrée utilisateur
+    int new_value;
+
+    if (count >= sizeof(kbuf))
+        return -EINVAL; // Retourne une erreur si l'entrée est trop grande
+
+    // Copie depuis l'espace utilisateur
+    if (copy_from_user(kbuf, user_buf, count))
+        return -EFAULT;
+
+    kbuf[count] = '\0'; // Terminaison de la chaîne
+
+    // Conversion en entier
+    if (kstrtoint(kbuf, 10, &new_value) < 0) {
+        pr_err("Erreur : entrée non valide\n");
+        return -EINVAL;
+    }
+
+    // Validation de la plage (0 < x <= 20)
+    if (new_value <= 0 || new_value > 20) {
+        pr_err("Erreur : valeur hors de la plage (0 < x <= 20)\n");
+        return -EINVAL;
+    }
+
+    // Mise à jour de num_passwords
+    num_passwords = new_value;
+    if (update_information(1) == -ENOMEM)
+    {
+        pr_err("Failed to update information(\n");
+        return -ENOMEM;
+    }
+    pr_info("num_passwords mis à jour à : %d\n", num_passwords);
+
+    return count; // Retourne le nombre d'octets traités
+}
 
 // Fonction pour lire pass_world_input depuis debugfs
 static ssize_t is_pass_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
