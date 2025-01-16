@@ -79,8 +79,9 @@ struct file_info
 // LE NOMBRE DE FICHIER D'EN LE MODULE A BESOIN
 #define NBR_OF_FILE 3
 #define MDP_INFO_FILE 0
+#define FUCHIER_SUCESS 1
 
-// TOUT LES PATH DES FICHIER D'EN LE MODULE A BESOIN
+// TOUT LES PATH DES FICHIER D'EN LE MODULE A BESOIN je n'utilise pas le 1 et le 2 pour le moment mais ils sont la on sais jaja
 static const char *file_path_predef[NBR_OF_FILE] = {
     "/dev/otp0", "/dev/otp1", "/dev/otp2"};
 
@@ -195,13 +196,15 @@ static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size
     kbuf[count] = '\0';
 
     // Conversion en entier
-    if (kstrtoint(kbuf, 10, &new_value) < 0) {
+    if (kstrtoint(kbuf, 10, &new_value) < 0)
+    {
         pr_err("Erreur : entrée non valide\n");
         return -EINVAL;
     }
 
     // Validation de la plage (0 < x <= 20)
-    if (new_value <= 0 || new_value > 20) {
+    if (new_value <= 0 || new_value > 20)
+    {
         pr_err("Erreur : valeur hors de la plage (0 < x <= 20)\n");
         return -EINVAL;
     }
@@ -234,7 +237,8 @@ static ssize_t changeProckTime(struct file *file, const char __user *user_buf, s
     kbuf[count] = '\0';
 
     // Conversion en entier
-    if (kstrtoint(kbuf, 10, &new_value) < 0) {
+    if (kstrtoint(kbuf, 10, &new_value) < 0)
+    {
         pr_err("Erreur : entrée non valide\n");
         return -EINVAL;
     }
@@ -287,16 +291,19 @@ static ssize_t is_pass_write(struct file *file, const char __user *user_buf, siz
             {
                 item->use = true; // Marquer comme utilisé
                 pr_info("Password '%s' has been marked as used.\n", pass_world_input);
+                write_to_file("SUPER MON BOEUF T'AS MIS LE BON MDP", FUCHIER_SUCESS);
                 save_and_lock_passwords();
                 return count;
             }
             else
             {
                 pr_warn("Password '%s' is already marked as used.\n", pass_world_input);
+                write_to_file("Non t'as deja utiliser ça mon boeuf", FUCHIER_SUCESS);
                 return -EEXIST; // Code d'erreur pour signaler un conflit
             }
         }
     }
+    write_to_file("Non il existe pas ce mdp mon petit cochon", FUCHIER_SUCESS);
 
     // Si aucun mot de passe ne correspond
     pr_warn("Password '%s' not found in the list.\n", pass_world_input);
@@ -640,6 +647,7 @@ static int __init password_generator_init(void)
         return -ENOMEM;
     }
     pr_info("Module decharge \n");
+    write_to_file("RIEN", FUCHIER_SUCESS);
     return 0;
 }
 
