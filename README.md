@@ -88,35 +88,29 @@ sudo cat /sys/kernel/debug/my_debugfs_dir/mdp_input
 ---
 
 ### 6. **start.sh**
-Ce script initialise le module OTP avec des paramètres par défaut, récupère la liste des mots de passe, et exécute le programme principal.
+Ce script initialise le module OTP avec des paramètres personnalisables ou affiche l'aide si aucune option n'est fournie.
 
 **Usage :**
 ```bash
-sudo ./start.sh
+sudo ./start.sh [-h] [-n <num_passwords>] [-t <time>]
+```
+
+**Options :**
+- `-h` : Affiche l'aide du script.
+- `-n <num_passwords>` : Spécifie le nombre de mots de passe à générer (par défaut : 3).
+- `-t <time>` : Définit le temps de rechargement des mots de passe en secondes (par défaut : 240).
+
+**Exemples :**
+```bash
+sudo ./start.sh -n 5 -t 300
+sudo ./start.sh -h
 ```
 
 **Commandes exécutées dans le script :**
 ```bash
 sudo rmmod otp
-sudo insmod otp.ko num_passwords=3 time=240
+sudo insmod otp.ko num_passwords=<num_passwords> time=<time>
 ./get_mdp_list.sh
 ```
 
 ---
-
-## Prérequis
-- Accès root pour exécuter certains scripts (`sudo`).
-- Un module kernel `otp.ko` correctement compilé et installé.
-- Accès au système de fichiers `debugfs`.
-
----
-
-## Avertissements
-- Les scripts qui modifient des paramètres utilisent des commandes privilégiées, assurez-vous de comprendre leurs effets avant de les exécuter.
-- Testez les scripts dans un environnement contrôlé avant de les utiliser en production.
-
----
-
-## Auteur
-Ce projet a été conçu pour simplifier la gestion des mots de passe OTP via un système basé sur `debugfs`.
-
