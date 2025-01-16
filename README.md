@@ -2,6 +2,9 @@
 
 Ce projet comprend plusieurs scripts Bash permettant de gérer et de configurer un système de génération de mots de passe OTP via des fichiers dans le `debugfs`.
 
+Merci de compiler le projet avec make et de l'exécuter avec ./start.sh.
+Utilisez ./start.sh -h pour plus d'informations
+
 ## Scripts disponibles
 
 ### 1. **get_mdp_list.sh**
