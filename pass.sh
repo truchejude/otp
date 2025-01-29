@@ -7,5 +7,6 @@ if [ "$#" -ne 1 ]; then
 fi
 
 NEW_VALUE="$1"
-echo "$NEW_VALUE" | sudo tee /sys/kernel/debug/my_debugfs_dir/mdp_input
+echo "$NEW_VALUE" > /dev/OTP
+cat /dev/OTP
 # ./pass.sh {MDP}

@@ -14,17 +14,152 @@
 #include <linux/time64.h>
 #include <linux/timekeeping.h>
 
+#include <linux/device.h>
+#include <linux/cdev.h>
+
 // GLOBAL VARIABLE START:
 
+// Structure pour chaque mot de passe
+struct password_item
+{
+    char *password;        // Mot de passe généré
+    struct list_head list; // Liste chaînée (pour lier les éléments)
+    bool use;
+};
+
+// Déclaration de la tête de la liste chaînée
+static LIST_HEAD(password_list);
+
+// ------------------------------------------------------------------------ device
+#define DEVICE_NAME "OTP"
+#define CLASS_NAME "otp_class"
+#define MAX_PASSWORD_LEN 100
+
+static int major_number;
+static struct class *otp_class = NULL;
+static struct device *password_device = NULL;
+
+static char password_buffer[MAX_PASSWORD_LEN] = "";
+static size_t password_length = 0;
+
 int update_information(const int free);
+
+// Fonction appelée lors de la lecture du device
+static ssize_t device_read(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
+{
+    if (*ppos > 0 || password_length == 0)
+        return 0; // EOF
+
+    if (copy_to_user(user_buf, password_buffer, password_length))
+        return -EFAULT;
+
+    *ppos += password_length;
+    return password_length;
+}
+
+// Fonction appelée lors de l'écriture dans le device
+static ssize_t device_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
+{
+    struct password_item *item;
+    char input[MAX_PASSWORD_LEN];
+
+    if (count > MAX_PASSWORD_LEN - 1)
+        return -EINVAL;
+
+    if (copy_from_user(input, user_buf, count))
+        return -EFAULT;
+
+    input[count - 1] = '\0';
+
+    list_for_each_entry(item, &password_list, list)
+    {
+        if (strcmp(item->password, input) == 0)
+        {
+            if (!item->use)
+            {
+                item->use = true;
+                snprintf(password_buffer, MAX_PASSWORD_LEN, "Password '%s' marked as used.\n", input);
+                password_length = strlen(password_buffer);
+                pr_info("yep\n");
+                return count;
+            }
+            else
+            {
+                snprintf(password_buffer, MAX_PASSWORD_LEN, "Password '%s' already used.\n", input);
+                password_length = strlen(password_buffer);
+                pr_info("pas yep\n");
+                return count;
+            }
+        }
+    }
+
+    snprintf(password_buffer, MAX_PASSWORD_LEN, "Password '%s' not found.\n", input);
+    password_length = strlen(password_buffer);
+    pr_info("PAS DE MDP COMME ça\n");
+    return count;
+}
+
+// Fonction appelée lors de l'ouverture du device
+static int device_open(struct inode *inode, struct file *file)
+{
+    pr_info("Device opened\n");
+    return 0;
+}
+
+int save_and_lock_passwords(void);
+// Fonction appelée lors de la fermeture du device
+static int device_release(struct inode *inode, struct file *file)
+{
+    pr_info("Device closed\n");
+    save_and_lock_passwords();
+    return 0;
+}
+
+// Définition des opérations du device
+static const struct file_operations fops = {
+    .owner = THIS_MODULE,
+    .read = device_read,
+    .write = device_write,
+    .open = device_open,
+    .release = device_release,
+};
+
+// Fonction pour définir les permissions des devices
+static char *password_devnode(const struct device *dev, umode_t *mode)
+{
+    if (mode)
+    {
+        *mode = 0666; // Lecture et écriture pour tous les utilisateurs
+    }
+    return NULL;
+}
+
+// ------------------------------------------------------------------------ My_LIB
+struct file_info
+{
+    struct file *file_ptr;
+    const char *my_file_path;
+};
+
+// LE NOMBRE DE FICHIER D'EN LE MODULE A BESOIN
+#define NBR_OF_FILE 3
+#define MDP_INFO_FILE 0
+#define FUCHIER_SUCESS 1
+
+// TOUT LES PATH DES FICHIER D'EN LE MODULE A BESOIN je n'utilise pas le 1 et le 2 pour le moment mais ils sont la on sais jaja
+static const char *file_path_predef[NBR_OF_FILE] = {
+    "/dev/otp0", "/dev/otp1", "/dev/otp2"};
+
+// UNE STRUCTURE POUR AVOIR PLUS FACILEMENT LESINFORMATION DES FICHIER
+static struct file_info file_info_tab[NBR_OF_FILE];
 
 // ------------------------------------------------------------------------ DEBUG DIR
 static char pass_world_input[100] = "";
 #define NBR_OF_DEBUG 3
 static const char *debug_file_name[NBR_OF_DEBUG] = {
-    "mdp_input", // donne le mdp et restart le mdp
-    "nbr_pass",  // c'est bon on peux changer le nombre de mdp en tre 1 et 20
-    "time"       // le temps pour pouvoir le changer #PAS FAIT
+    "mdp_input", // restart le mdp
+    "nbr_pass",  // pour changer le mdp
+    "time"       // pour changer le temps de restart
 };
 static struct dentry *debug_dir, *debug_file[NBR_OF_DEBUG];
 
@@ -39,12 +174,14 @@ static ssize_t changeMdpNpr(struct file *file, const char __user *user_buf, size
 // si le man écrit dans le fichier time ça change le nombre de mdp
 static ssize_t changeProckTime(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos);
 
+/*
 // just pour tester
 static ssize_t plopW(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
     pr_err("PLOP: W");
     return 0;
 }
+*/
 
 // just pour tester
 static ssize_t plopR(struct file *file, char __user *user_buf, size_t count, loff_t *ppos)
@@ -69,43 +206,12 @@ static const struct file_operations fops_str[NBR_OF_DEBUG] = {{
                                                                   .write = changeProckTime,
                                                               }};
 
-// ------------------------------------------------------------------------ My_LIB
-struct file_info
-{
-    struct file *file_ptr;
-    const char *my_file_path;
-};
-
-// LE NOMBRE DE FICHIER D'EN LE MODULE A BESOIN
-#define NBR_OF_FILE 3
-#define MDP_INFO_FILE 0
-#define FUCHIER_SUCESS 1
-
-// TOUT LES PATH DES FICHIER D'EN LE MODULE A BESOIN je n'utilise pas le 1 et le 2 pour le moment mais ils sont la on sais jaja
-static const char *file_path_predef[NBR_OF_FILE] = {
-    "/dev/otp0", "/dev/otp1", "/dev/otp2"};
-
-// UNE STRUCTURE POUR AVOIR PLUS FACILEMENT LESINFORMATION DES FICHIER
-static struct file_info file_info_tab[NBR_OF_FILE];
-
 // ------------------------------------------------------------------------ GÉNERATEUR DE MDP
 
 // déclaration des function
 int add_password_to_list(const char *password);
 int generate_passwords(int number);
 void print_passwords(void);
-int save_and_lock_passwords(void);
-
-// Structure pour chaque mot de passe
-struct password_item
-{
-    char *password;        // Mot de passe généré
-    struct list_head list; // Liste chaînée (pour lier les éléments)
-    bool use;
-};
-
-// Déclaration de la tête de la liste chaînée
-static LIST_HEAD(password_list);
 
 // Liste des mots de base
 static const char *base_words[] = {
@@ -127,7 +233,7 @@ module_param(time, int, 0444);
 MODULE_PARM_DESC(time, "le temps d'que les mdp se refreche");
 
 static struct hrtimer test_hrtimer;
-static u64 sampling_period_ms = (0 * HZ);
+// static u64 sampling_period_ms = (0 * HZ);
 
 // ------------------------- My_LIB ------------------------- START
 
@@ -152,9 +258,11 @@ static char *my_strcpy_kernel(const char *src)
     return dest; // Retourne le pointeur vers la chaîne copiée
 }
 
-// pour écrire dans un fichier
+// pour écrire dans un fichier //MARCHE PLUS
+
 static int write_to_file(const char *data, int nbrf)
 {
+    pr_info("LE FICHIER VAS éTRE EDITER AVEC: %s %d\n", data, nbrf);
     loff_t pos = 0;
     size_t len = strlen(data);
     ssize_t written;
@@ -267,6 +375,7 @@ static ssize_t is_pass_read(struct file *file, char __user *user_buf, size_t cou
 }
 
 // function quand le fichier str_parm est modifier
+// c'est quand on met un mdp //MARCHE PLUS
 static ssize_t is_pass_write(struct file *file, const char __user *user_buf, size_t count, loff_t *ppos)
 {
     struct password_item *item;
@@ -416,6 +525,7 @@ void print_passwords(void)
     }
 }
 
+/*
 static char *get_current_time_str(void)
 {
     struct timespec64 ts;
@@ -440,6 +550,7 @@ static char *get_current_time_str(void)
 
     return time_str;
 }
+*/
 
 static char *get_time_with_offset(int time_offset)
 {
@@ -469,6 +580,7 @@ static char *get_time_with_offset(int time_offset)
     return time_str;
 }
 
+/*
 static void print_time(void)
 {
     char *time_str = get_current_time_str();
@@ -482,6 +594,7 @@ static void print_time(void)
         pr_err("Failed to allocate memory for time string\n");
     }
 }
+*/
 
 static void print_time_with_offset(int offset)
 {
@@ -496,6 +609,8 @@ static void print_time_with_offset(int offset)
         pr_err("Failed to allocate memory for time string\n");
     }
 }
+
+char *time_mdp_expired = NULL;
 
 int save_and_lock_passwords(void)
 {
@@ -516,10 +631,7 @@ int save_and_lock_passwords(void)
     // Calcul de la taille totale nécessaire pour stocker uniquement les mots de passe non utilisés
     list_for_each_entry(item, &password_list, list)
     {
-        if (!item->use) // Ne compter que les mots de passe non utilisés
-        {
-            total_length += strlen(item->password) + 1; // +1 pour '\n'
-        }
+        total_length += strlen(item->password) + 1 + 2; // +1 pour '\n' et + 2 pour "X " ou "o "
     }
 
     // Allocation de mémoire pour la chaîne complète
@@ -539,6 +651,13 @@ int save_and_lock_passwords(void)
     {
         if (!item->use) // N'inclure que les mots de passe non utilisés
         {
+            strcat(all_passwords, "o ");
+            strcat(all_passwords, item->password);
+            strcat(all_passwords, "\n"); // Ajout d'un saut de ligne après chaque mot de passe
+        }
+        else
+        {
+            strcat(all_passwords, "x ");
             strcat(all_passwords, item->password);
             strcat(all_passwords, "\n"); // Ajout d'un saut de ligne après chaque mot de passe
         }
@@ -547,7 +666,7 @@ int save_and_lock_passwords(void)
     // Écriture dans le fichier avec uniquement les mots de passe non utilisés
     write_to_file(all_passwords, MDP_INFO_FILE);
 
-    pr_info("Les mots de passe non utilisés ont été écrits dans le fichier: %s %zu\n", all_passwords, strlen(all_passwords));
+    pr_info("Les mots de passe non utilisés ont été écrits dans le fichier: %s\n", all_passwords);
 
     // Libération de la mémoire allouée
     kfree(all_passwords);
@@ -584,7 +703,7 @@ int update_information(const int free)
         pr_err("Failed to save passwords\n");
         return -ENOMEM;
     }
-    // FREE LES MDP
+
     return 0;
 }
 
@@ -619,6 +738,49 @@ static int __init password_generator_init(void)
 {
     pr_info("Module charge : Generation de mots de passe\n");
 
+    // Allouer un numéro majeur
+    /*
+        L'allocation d'un numéro majeur permet au noyau de savoir quel pilote doit gérer un device donné.
+
+        Sans ce numéro, votre module ne peut pas enregistrer un device et donc interagir avec l'espace utilisateur.
+    */
+    major_number = register_chrdev(0, DEVICE_NAME, &fops);
+    if (major_number < 0)
+    {
+        pr_err("Failed to register a major number\n");
+        return major_number;
+    }
+
+    // Créer une classe de device
+    /*
+        Créer une classe de device dans un module du noyau Linux
+        permet de regrouper et d'organiser des devices similaires sous une même catégorie logique.
+
+        Cela facilite leur gestion et leur exposition à l'espace utilisateur via le système de fichiers virtuel /sys et les nœuds dans /dev
+    */
+    otp_class = class_create(CLASS_NAME);
+    if (IS_ERR(otp_class))
+    {
+        unregister_chrdev(major_number, DEVICE_NAME);
+        pr_err("Failed to register device class\n");
+        return PTR_ERR(otp_class);
+    }
+
+    // Associer la fonction devnode pour définir les permissions
+    /*
+        pour pouvoir l'utiliser sans utiliser sudo
+    */
+    otp_class->devnode = password_devnode;
+
+    // Créer le device
+    password_device = device_create(otp_class, NULL, MKDEV(major_number, 0), NULL, DEVICE_NAME);
+    if (IS_ERR(password_device))
+    {
+        class_destroy(otp_class);
+        unregister_chrdev(major_number, DEVICE_NAME);
+        pr_err("Failed to create the device\n");
+        return PTR_ERR(password_device);
+    }
     // le truc tecnique un peux obligatioir quoi fo pas toucher
 
     // initialisation des Path des fichier
@@ -691,6 +853,13 @@ static void __exit password_generator_exit(void)
     cleanup_timer();
     pr_info("Module decharge \n");
     clean_debug();
+
+    // Détruire le device et la classe
+    device_destroy(otp_class, MKDEV(major_number, 0));
+    class_destroy(otp_class);
+
+    // Désenregistrer le numéro majeur
+    unregister_chrdev(major_number, DEVICE_NAME);
 }
 
 // ------------------------- GÉNERATEUR DE MDP -------------- END
@@ -701,3 +870,4 @@ module_exit(password_generator_exit);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Les gougniafier");
 MODULE_DESCRIPTION("gestionaire de MDP one time by");
+MODULE_VERSION("2.0");
